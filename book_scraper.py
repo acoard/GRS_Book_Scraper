@@ -39,9 +39,11 @@ def get_PDF(pdf_path, pdf_name):
 
 def scrape_Blegen():
 	#Best scraper thus far! Returns a list of dictionaries of author:title.
-	#TODO: Check if u'\xa0' can be output fine, it is a unicode space, or whether there are issues.
 
 	Blegen_URL = 'http://ambrosia.ascsa.edu.gr:8991/F/?func=find-b&request=blg1013+or+gen1013+or+bsa1013&find_code=WRD&adjacent=N'
+	
+	#The code below properly scrapes each page.  TODO: Iterate over each page ("next page" button)
+
 	html = urllib2.urlopen(Blegen_URL).read()
 	soup = BeautifulSoup( html )
 	tables = soup.find_all('table')
@@ -56,7 +58,8 @@ def scrape_Blegen():
 		d["author"] = author
 		d["title"] = title
 		text.append(d)
-
+	if text[0] == {'title' : 'Title', 'author' : 'Author'}: #technical debt
+		del text[0]
 	return text
 	
 def scrape_JRA():
@@ -139,8 +142,9 @@ def scrape_Sackler():
 	return pdfs_to_scrape
 	
 def scrape_Prop():
+	#Currently doesn't scrape second page.  Make it follow the last link then repeat?
+
 	url = 'http://www.propylaeum.de/en/altertumswissenschaften/new-acquisitions/'
-	
 	br = mechanize.Browser()
 	br.open(url)
 	br.select_form(nr=1)
@@ -149,13 +153,28 @@ def scrape_Prop():
 	br["RAUM"] = ["G_rr"]  # Region: Roman Empire
 	form_response = br.submit()
 	
-	#Begin parsing
 	soup = BeautifulSoup(form_response)
+	output = scrape_Prop_sub(soup)
+
+	#Check to see if there is another page of results:
+	there_is_another_page = bool(soup.find_all('a')[-1].text.strip() == 'Anzeige weiterer Titel')
+	while there_is_another_page:
+		#follow link, repeat scraping, add to output
+		base_url = 'http://mdz1.bib-bvb.de/'
+		page_link = soup.find_all('a')[-1].get('href')
+		url = base_url + page_link
+		response = br.open(url)
+		soup = BeautifulSoup(response)
+		output += scrape_Prop_sub(soup)
+		there_is_another_page = bool(soup.find_all('a')[-1].text.strip() == 'Anzeige weiterer Titel')
+	return output
+
+def scrape_Prop_sub(soup):
+	#Function to be called in scrape_Prop() ONLY.  
 	p_tags = soup.body.find_all('p')
 	#Lots of malformed <p> tags, so check to make sure they aren't empty. 
 	#nb: len(<p></p>) == 0, I think this is BeautifulSoup doing this.
 	paras = [p for p in p_tags if len(p) > 1]
-	
 	#Create a list of dictionaries of author:title and return it.
 	output = []
 	for i in paras:
@@ -166,4 +185,10 @@ def scrape_Prop():
 		output.append(d)
 	return output
 
-soup = scrape_Prop()
+
+response = scrape_Prop()
+
+def scraped_results():
+	#Amalgamtes all the results into one function.
+	output = scrape_Prop() + scrape_Blegen()
+	return output
