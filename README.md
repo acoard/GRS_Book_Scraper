@@ -1,11 +1,7 @@
-This is less of a readme, and more of a devlog.
+This repository contains two files, book_scraper.py and form_creator.py.  
 
-Currently working as intended:
-	scrape_Prop()
-	scrape_Blegen()
+I have tried to keep my code well documented, so if you are familiar with Python you should be able to understand it.  Regardless, I will be updating this README file in the coming weeks to help keep track of what functionality has been written.
 
-Partially working:
-	scrape_JRA() - returns ISBN only.
-
-Not working:
-	scrape_Sackler()
+If you have any questions, do not hesitate to contact me.
+Adam Coard - arcoard @t (g)mail dot com.  
+(The spelling is modified so I won't get spammed).

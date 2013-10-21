@@ -38,18 +38,41 @@ def get_PDF(pdf_path, pdf_name):
 	f.write(u.read())
 
 def scrape_Blegen():
-	#Best scraper thus far! Returns a list of dictionaries of author:title.
+	"""
+	This function properly scrapes the website, but there is a problem.  Blegen just have one long list of their books,
+	sorted by date acquired.  There's no easy to way just add the "new" ones (although later I plan to see if new books are copies of the list on GDocs).
+	Thus, this function only attempts to search the first page.  The commented out code below was for searching through all pages.
+
+	"""
+
 
 	Blegen_URL = 'http://ambrosia.ascsa.edu.gr:8991/F/?func=find-b&request=blg1013+or+gen1013+or+bsa1013&find_code=WRD&adjacent=N'
-	
-	#The code below properly scrapes each page.  TODO: Iterate over each page ("next page" button)
-
 	html = urllib2.urlopen(Blegen_URL).read()
 	soup = BeautifulSoup( html )
 	tables = soup.find_all('table')
-	table = tables[4] #Tables 0-3 are all navbar layout, [4] is content.
+	data = scrape_Blegen_sub(soup)
+	#is_another_page = bool(soup.find("img", {"alt":"Next Page"}))
 
-	text = []
+	#THE BELOW CODE IS PARTIALLY WORKING, BUT GOING BACK THROUGH ALL THE PAGES JUST GOES BACK TO THEIR ORIGINAL BOOKS.
+	#AS THEY ONLY SORT BOOKS BY YEAR, CAN'T REALLY COMPILE A MONTHLY REPORT.  
+
+	# while is_another_page:
+	# 	new_page_link = tables[3].a.get('href')
+	# 	new_page = urllib2.urlopen(new_page_link).read()
+	# 	soup = BeautifulSoup ( new_page )
+	# 	is_another_page = bool(soup.find("img", {"alt":"Next Page"}))
+
+	# 	data += scrape_Blegen_sub(soup)
+
+
+
+	return data
+
+def scrape_Blegen_sub(soup):
+	#Only to be called by scrape_Blegen.
+	tables = soup.find_all('table')
+	table = tables[4] #Tables 0-3 are all navbar layout, [4] is content.
+	output = []
 	for tr in table.find_all('tr'):
 		d = {}
 		tr = tr.text.split('\n')
@@ -57,11 +80,11 @@ def scrape_Blegen():
 		title = tr[4]#.split(u'\xa0')[0]
 		d["author"] = author
 		d["title"] = title
-		text.append(d)
-	if text[0] == {'title' : 'Title', 'author' : 'Author'}: #technical debt
-		del text[0]
-	return text
-	
+		output.append(d)
+	if output[0] == {'title' : 'Title', 'author' : 'Author'}: #technical debt
+		del output[0]
+	return output
+
 def scrape_JRA():
 	#Returns a list of ISBNs.
 	#TODO: Transform ISBNs to Author/Book info.
@@ -142,8 +165,7 @@ def scrape_Sackler():
 	return pdfs_to_scrape
 	
 def scrape_Prop():
-	#Currently doesn't scrape second page.  Make it follow the last link then repeat?
-
+	#Function is 100% operational.
 	url = 'http://www.propylaeum.de/en/altertumswissenschaften/new-acquisitions/'
 	br = mechanize.Browser()
 	br.open(url)
@@ -173,7 +195,7 @@ def scrape_Prop_sub(soup):
 	#Function to be called in scrape_Prop() ONLY.  
 	p_tags = soup.body.find_all('p')
 	#Lots of malformed <p> tags, so check to make sure they aren't empty. 
-	#nb: len(<p></p>) == 0, I think this is BeautifulSoup doing this.
+	#NB: len(<p></p>) == 0, I think this is BeautifulSoup doing this.
 	paras = [p for p in p_tags if len(p) > 1]
 	#Create a list of dictionaries of author:title and return it.
 	output = []
@@ -186,9 +208,10 @@ def scrape_Prop_sub(soup):
 	return output
 
 
-response = scrape_Prop()
+soup = scrape_Blegen()
 
 def scraped_results():
 	#Amalgamtes all the results into one function.
-	output = scrape_Prop() + scrape_Blegen()
+	#Prop's website is 404ing, I think it's their end - uncomment when it's back up.
+	output = scrape_Blegen() + scrape_Prop()
 	return output
