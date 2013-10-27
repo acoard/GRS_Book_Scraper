@@ -9,6 +9,7 @@ import urllib2
 import re
 import datetime
 import mechanize
+import json
 
 
 from cStringIO import StringIO
@@ -20,6 +21,10 @@ from pdfminer.layout import LAParams
 #ISBN http://stackoverflow.com/questions/4893908/how-to-get-isbn-number-from-a-book-title-and-author-programmatically
 
 regex_ISBN = re.compile('978(?:-?\d){10}')
+
+def get_soup(url):
+	html = urllib2.urlopen(url).read()
+	return BeautifulSoup(html)
 
 def to_txt(pdf_path):
     input_ = file(pdf_path, 'rb')
@@ -36,6 +41,23 @@ def get_PDF(pdf_path, pdf_name):
 	u = urllib2.urlopen(pdf_path)
 	f = open(pdf_name, 'w+b')
 	f.write(u.read())
+
+def lookup_ISBN(isbn):
+	url = 'https://www.googleapis.com/books/v1/volumes?q=isbn:'
+	url += isbn
+	data = urllib2.urlopen(url).read()
+	data = json.loads(data)
+	if data["totalItems"] >= 1:
+		d = {}
+		volumeInfo = data["items"][0]["volumeInfo"]
+		d["title"] = volumeInfo["title"]
+		d["authors"] = volumeInfo["authors"]
+		d["link"] = data["items"][0]["accessInfo"]["webReaderLink"]
+	return d
+
+
+
+
 
 def scrape_Blegen():
 	"""
@@ -85,7 +107,14 @@ def scrape_Blegen_sub(soup):
 		del output[0]
 	return output
 
-def scrape_JRA():
+def scrape_JRA(amazonLookup=False):
+	"""Returns a dictionary that contains both ISBNs, 
+	and if the item exists on amazon a search to that item.
+
+	This function takes a LONG time to call mostly because of 
+	all the calls to create_amazon_search().
+	With 137 calls to c_a_s, it took 4 minutes 18 seconds.  Approx 2 seconds a call.
+	"""
 	#Returns a list of ISBNs.
 	#TODO: Transform ISBNs to Author/Book info.
 	JRA = 'http://www.journalofromanarch.com/booksreceived.html'
@@ -115,7 +144,38 @@ def scrape_JRA():
 	text = text.split('USA\n')[1] #skips header
 	regex = re.compile('978(?:-?\d){10}') #ISBN
 	
-	return regex_ISBN.findall(text)	 #IF this isn't working return to regex.findall(text)
+	list_of_isbns = regex_ISBN.findall(text)
+	isbns_without_dashes = [] #To search Google ISBNs must be just digits.
+	for isbn in list_of_isbns:
+		isbns_without_dashes.append(isbn.replace('-', ''))
+
+
+	#return regex_ISBN.findall(text)	 #IF this isn't working return to regex.findall(text)
+	if amazonLookup:
+		output = []
+		for isbn in isbns_without_dashes:
+			d = {}
+			d["isbn"] = isbn
+			amazon = create_amazon_search(isbn)
+			if amazon: 
+				d["amazon"] = amazon
+			output.append(d)
+		return output
+	else:
+		return isbns_without_dashes
+
+def create_amazon_search(isbn):
+	"""Takes an ISBN and generates an amazon query.
+	TODO: If the search exists, follow the link and get the price."""
+	print "c_a_s Being called."
+	url = 'http://www.amazon.ca/gp/search?index=books&linkCode=qs&keywords='
+	url += isbn
+	soup = get_soup(url)
+	#Check to see if a 'no results found' message is displayed.
+	if "noResultsTitle" in str(soup.findAll("h1")):
+		return False
+	else:
+		return url
 
 def scrape_Sackler():
 	#As this bot will run monthly, the bot must go through EACH of the 4 weekly pages and add them to the list.
@@ -206,9 +266,6 @@ def scrape_Prop_sub(soup):
 		d["ISBN"] = regex_ISBN.findall(str(i))
 		output.append(d)
 	return output
-
-
-soup = scrape_Blegen()
 
 def scraped_results():
 	#Amalgamtes all the results into one function.
