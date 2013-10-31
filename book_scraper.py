@@ -10,6 +10,9 @@ import re
 import datetime
 import mechanize
 import json
+import time
+
+from api_keys import *
 
 
 from cStringIO import StringIO
@@ -45,25 +48,33 @@ def get_PDF(pdf_path, pdf_name):
 def lookup_ISBN(isbn):
 	url = 'https://www.googleapis.com/books/v1/volumes?q=isbn:'
 	url += isbn
+	key =  "&key=" + Google_API_Key
+	url += key
+
 	data = urllib2.urlopen(url).read()
 	data = json.loads(data)
+
 	if data["totalItems"] >= 1:
 		d = {}
 		volumeInfo = data["items"][0]["volumeInfo"]
-		d["title"] = volumeInfo["title"]
-		d["authors"] = volumeInfo["authors"]
-		d["link"] = data["items"][0]["accessInfo"]["webReaderLink"]
-	return d
-
-
-
+		if "title" in volumeInfo:
+			d["title"] = volumeInfo["title"]
+		if "authors" in volumeInfo:
+			d["authors"] = volumeInfo["authors"]
+		if "webReaderLink" in ["webReaderLink"]:
+			d["link"] = data["items"][0]["accessInfo"]["webReaderLink"]
+		d["isbn"] = isbn
+		return d
+	else: #if no info from google, just return the isbn.
+		return False
 
 
 def scrape_Blegen():
 	"""
-	This function properly scrapes the website, but there is a problem.  Blegen just have one long list of their books,
-	sorted by date acquired.  There's no easy to way just add the "new" ones (although later I plan to see if new books are copies of the list on GDocs).
-	Thus, this function only attempts to search the first page.  The commented out code below was for searching through all pages.
+	This function properly scrapes the website, but there is a problem.  I can only get it to search the first and second pages.  
+	The URLs I'm going to each time are different, but the Blegen URL system is as byzantine as it gets.
+
+	As of now, the code is set to only get the first two pages, which will hopefully be adequate on a monthly run.
 
 	"""
 
@@ -73,20 +84,22 @@ def scrape_Blegen():
 	soup = BeautifulSoup( html )
 	tables = soup.find_all('table')
 	data = scrape_Blegen_sub(soup)
-	#is_another_page = bool(soup.find("img", {"alt":"Next Page"}))
+	is_another_page = bool(soup.find("img", {"alt":"Next Page"}))
 
-	#THE BELOW CODE IS PARTIALLY WORKING, BUT GOING BACK THROUGH ALL THE PAGES JUST GOES BACK TO THEIR ORIGINAL BOOKS.
-	#AS THEY ONLY SORT BOOKS BY YEAR, CAN'T REALLY COMPILE A MONTHLY REPORT.  
-
-	# while is_another_page:
-	# 	new_page_link = tables[3].a.get('href')
-	# 	new_page = urllib2.urlopen(new_page_link).read()
-	# 	soup = BeautifulSoup ( new_page )
-	# 	is_another_page = bool(soup.find("img", {"alt":"Next Page"}))
-
-	# 	data += scrape_Blegen_sub(soup)
-
-
+	#THE BELOW CODE IS PARTIALLY WORKING, APPEARS TO GO TO THE SECOND PAGE AND THEN JUST REPEAT.
+	#data[19] is the same as data[60]
+	i = 1
+	while is_another_page and (data[-1]["date"] >= datetime.date.today().year):
+		# print "Page : " + str(i)
+		new_page_link = tables[3].a.get('href')
+		# print "Link : " + str(new_page_link)
+		new_page = urllib2.urlopen(new_page_link).read()
+		soup = BeautifulSoup ( new_page )
+		tables = soup.find_all('table')
+		is_another_page = bool(soup.find("img", {"alt":"Next Page"}))
+		data += scrape_Blegen_sub(soup)
+		i += 1
+		if i == 2: break
 
 	return data
 
@@ -98,12 +111,14 @@ def scrape_Blegen_sub(soup):
 	for tr in table.find_all('tr'):
 		d = {}
 		tr = tr.text.split('\n')
-		author = tr[3].split(u'\xa0')[0]
-		title = tr[4]#.split(u'\xa0')[0]
+		author = tr[3].split(u'\xa0')[0].strip()
+		title = tr[4].strip()#.split(u'\xa0')[0]
+		year = tr[6].strip()
 		d["author"] = author
 		d["title"] = title
+		d["date"] = year
 		output.append(d)
-	if output[0] == {'title' : 'Title', 'author' : 'Author'}: #technical debt
+	if output[0] == {'title' : 'Title', 'author' : 'Author', 'date' : 'Year'}: #technical debt
 		del output[0]
 	return output
 
@@ -225,7 +240,7 @@ def scrape_Sackler():
 	return pdfs_to_scrape
 	
 def scrape_Prop():
-	#Function is 100% operational.
+	"""Function is fully operational."""
 	url = 'http://www.propylaeum.de/en/altertumswissenschaften/new-acquisitions/'
 	br = mechanize.Browser()
 	br.open(url)
@@ -271,4 +286,14 @@ def scraped_results():
 	#Amalgamtes all the results into one function.
 	#Prop's website is 404ing, I think it's their end - uncomment when it's back up.
 	output = scrape_Blegen() + scrape_Prop()
+	return output
+
+def query_google():
+	#Limits calls to google to stop 403ing.
+	output = []
+	for isbn in isbns:
+		x = lookup_ISBN(isbn)
+		if x: 
+			output.append(lookup_ISBN(isbn))
+		time.sleep(1)
 	return output

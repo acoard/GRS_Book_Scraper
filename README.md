@@ -4,4 +4,3 @@ I have tried to keep my code well documented, so if you are familiar with Python
 
 If you have any questions, do not hesitate to contact me.
 Adam Coard - arcoard @t (g)mail dot com.  
-(The spelling is modified so I won't get spammed).
